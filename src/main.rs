@@ -1,8 +1,93 @@
 extern crate gtk;
+extern crate serde;
+extern crate serde_json;
 
+use gio::prelude::*;
 use gtk::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::{Arc, RwLock};
 
 const GLADE_SRC: &'static str = include_str!("./ui.glade");
+
+const TITLE_COLUMN_ID: i32 = 0i32;
+const DESCRIPTION_COLUMN_ID: i32 = 1i32;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ToDo {
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+fn get_todos(store: &gtk::ListStore) -> Vec<ToDo> {
+    let mut todos: Vec<ToDo> = vec![];
+    store.foreach(|model, _path, iter| {
+        let title: Option<String> = model
+            .get_value(iter, TITLE_COLUMN_ID)
+            .get::<String>()
+            .unwrap();
+        let description: Option<String> = model
+            .get_value(iter, DESCRIPTION_COLUMN_ID)
+            .get::<String>()
+            .unwrap();
+        todos.push(ToDo { title, description });
+        false
+    });
+    todos
+}
+
+fn save_to_new_file(content: &str, quit_after_save: bool) {
+    let dialog = gtk::FileChooserDialogBuilder::new()
+        .title("Choose Save Location")
+        .action(gtk::FileChooserAction::Save)
+        .name("untitled.json")
+        .build();
+
+    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+    dialog.add_button("Save", gtk::ResponseType::Ok);
+
+    dialog.connect_response({
+        let content = content.to_owned();
+
+        move |dialog, event| {
+            match event {
+                gtk::ResponseType::Ok => {
+                    let file = dialog.get_file().unwrap();
+
+                    if let Some(path) = file.get_path() {
+                        if let Ok(_) = std::fs::write(&path, &content) {
+                            dialog.hide();
+                            if quit_after_save {
+                                gtk::main_quit();
+                            }
+                        } else {
+                            let dialog = gtk::MessageDialogBuilder::new()
+                                .message_type(gtk::MessageType::Error)
+                                .title("Error Saving File")
+                                .build();
+                            dialog.show_all();
+                        }
+                    }
+                }
+                gtk::ResponseType::Cancel => {
+                    dialog.hide();
+                }
+                _ => {
+                    // Cancelled
+                }
+            }
+        }
+    });
+
+    dialog.show_all();
+}
+
+fn save_to_old_file(path: &Path, content: &str, quit_after_save: bool) {
+    if quit_after_save {
+        gtk::main_quit();
+    }
+}
 
 fn main() {
     gtk::init().expect("Failed to initialize GTK.");
@@ -10,6 +95,8 @@ fn main() {
     let builder = gtk::Builder::from_string(GLADE_SRC);
 
     let window: gtk::ApplicationWindow = builder.get_object("window-main").unwrap();
+    let current_file: Arc<RwLock<Option<PathBuf>>> = Arc::new(RwLock::new(None));
+    let dirty: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     let store_types = [String::static_type(), String::static_type()];
     let title_column_id = 0;
@@ -55,6 +142,7 @@ fn main() {
     let button_add_todo: gtk::Button = builder.get_object("button-add-todo").unwrap();
     {
         let store = store.clone();
+        let dirty = dirty.clone();
         button_add_todo.connect_clicked(move |_event| {
             let store = store.clone();
 
@@ -68,6 +156,7 @@ fn main() {
 
             {
                 let window = window.clone();
+                let dirty = dirty.clone();
                 button_confirm_add_todo.connect_clicked(move |_button| {
                     let title = entry_title.get_text();
                     let description = {
@@ -76,6 +165,7 @@ fn main() {
                             .get_text(&buffer.get_start_iter(), &buffer.get_end_iter(), true)
                             .unwrap()
                     };
+                    dirty.store(true, Relaxed);
                     store.insert_with_values(None, &[0, 1], &[&title, &description]);
 
                     window.hide();
@@ -100,11 +190,55 @@ fn main() {
         });
     }
 
+    let save = {
+        let current_file = current_file.clone();
+        let store = store.clone();
+
+        Arc::new(Box::new(move |quit_after_save: bool| {
+            let dirty = dirty.load(Relaxed);
+            println!("Dirty: {}", dirty);
+
+            if dirty {
+                let todos = get_todos(&store);
+                let json = serde_json::to_string(&todos).unwrap();
+
+                if let Some(path) = current_file.read().unwrap().clone() {
+                    println!("Old");
+                    save_to_old_file(&path, &json, quit_after_save);
+                } else {
+                    println!("New");
+                    save_to_new_file(&json, quit_after_save);
+                }
+            } else {
+                if quit_after_save {
+                    gtk::main_quit();
+                }
+            }
+        }))
+    };
+
+    // Handle menu
+    {
+        let menu_button_new: gtk::MenuItem = builder.get_object("menu-button-new").unwrap();
+        let menu_button_open: gtk::MenuItem = builder.get_object("menu-button-open").unwrap();
+        let menu_button_save: gtk::MenuItem = builder.get_object("menu-button-save").unwrap();
+
+        menu_button_save.connect_select({
+            let save = save.clone();
+            move |button| {
+                save(false);
+            }
+        });
+    }
+
     // Handle Quitting Application
-    window.connect_delete_event(|_window, _event| {
-        gtk::main_quit();
-        Inhibit(true)
-    });
+    {
+        let save = save.clone();
+        window.connect_delete_event(move |_window, _event| {
+            save(true);
+            Inhibit(true)
+        });
+    }
 
     window.show_all();
 
