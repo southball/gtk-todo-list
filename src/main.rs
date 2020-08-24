@@ -21,14 +21,16 @@ fn main() {
     gtk::init().expect("Failed to initialize GTK.");
 
     let builder = gtk::Builder::from_string(SRC_MAIN_WINDOW);
-    let window: gtk::ApplicationWindow = builder.get_object("window-main").unwrap();
+    let main_window: gtk::ApplicationWindow = builder.get_object("window-main").unwrap();
+    let header_bar: gtk::HeaderBar = builder.get_object("header-bar-main").unwrap();
 
     // Application Store
     let store_types = [String::static_type(), String::static_type()];
     let store = gtk::ListStore::new(&store_types);
 
     let app_state = AppState {
-        main_window: Arc::new(window.clone().upcast()),
+        main_window: Arc::new(main_window.clone().upcast()),
+        header_bar: Arc::new(header_bar.clone()),
         dirty: Arc::new(AtomicBool::new(false)),
         file: Arc::new(RwLock::new(None)),
         store: Arc::new(store.clone()),

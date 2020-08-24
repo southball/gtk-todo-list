@@ -1,6 +1,6 @@
 use crate::model::ToDo;
 use crate::state::AppState;
-use crate::ui::*;
+use crate::ui::todo_treeview::{TITLE_COLUMN_ID, DESCRIPTION_COLUMN_ID};
 
 use gtk::prelude::*;
 

@@ -1,14 +1,27 @@
 use crate::state::AppState;
 use gtk::prelude::*;
+use std::sync::atomic::Ordering::Relaxed;
 
 use crate::client::*;
 use crate::ui::*;
 
 pub trait MainWindowUI {
+    fn update_subtitle(&self);
     fn handle_main_window(&self, builder: &gtk::Builder);
 }
 
 impl MainWindowUI for AppState {
+    fn update_subtitle(&self) {
+        let filename = self.file.read().unwrap().as_ref()
+            .and_then(|path| path.file_name().map(|str| str.to_str().unwrap().to_owned()))
+            .or(Some("Untitled".to_string()))
+            .unwrap();
+        let dirty_mark = if self.dirty.load(Relaxed) { "*" } else { "" };
+        let title = format!("{}{}", &dirty_mark, &filename);
+
+        self.header_bar.set_subtitle(Some(&title));
+    }
+
     fn handle_main_window(&self, builder: &gtk::Builder) {
         let app_state = self.clone();
         let main_window = self.main_window.as_ref().clone();
@@ -27,18 +40,19 @@ impl MainWindowUI for AppState {
         app_state.handle_delete_selection_button(&button_delete_selection, &treeview_todo);
 
         // Handle menu
-        let _menu_button_new: gtk::MenuItem = builder.get_object("menu-button-new").unwrap();
-        let _menu_button_open: gtk::MenuItem = builder.get_object("menu-button-open").unwrap();
+        let menu_button_new: gtk::MenuItem = builder.get_object("menu-button-new").unwrap();
+        let menu_button_open: gtk::MenuItem = builder.get_object("menu-button-open").unwrap();
         let menu_button_save: gtk::MenuItem = builder.get_object("menu-button-save").unwrap();
-        let _menu_button_save_as: gtk::MenuItem =
+        let menu_button_save_as: gtk::MenuItem =
             builder.get_object("menu-button-save-as").unwrap();
 
-        menu_button_save.connect_activate({
-            let app_state = app_state.clone();
-            move |_button| {
-                app_state.save(None);
-            }
-        });
+        app_state.handle_menu_button_new(&menu_button_new);
+        app_state.handle_menu_button_open(&menu_button_open);
+        app_state.handle_menu_button_save(&menu_button_save);
+        app_state.handle_menu_button_save_as(&menu_button_save_as);
+
+        // Update Title
+        self.update_subtitle();
 
         // Handle Quitting Application
         main_window.connect_delete_event({

@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 
 type Callback = Arc<Mutex<Box<dyn Fn(bool) -> ()>>>;
 
-pub trait SaveClient {
+pub trait FileClient {
+    fn new(&self, callback: Option<Callback>);
+    fn open(&self, callback: Option<Callback>);
     fn save(&self, callback: Option<Callback>);
     fn save_as(&self, callback: Option<Callback>);
     fn save_changed(&self, callback: Option<Callback>);
@@ -17,7 +19,25 @@ pub trait SaveClient {
     fn save_previous_file(&self, callback: Option<Callback>);
 }
 
-impl SaveClient for AppState {
+impl FileClient for AppState {
+    fn new(&self, callback: Option<Callback>) {
+        let app_state = self.clone();
+        self.save_changed(Some(Arc::new(Mutex::new(Box::new(move |_saved| {
+            *app_state.file.write().unwrap() = None;
+            app_state.dirty.store(false, Relaxed);
+            app_state.store.clear();
+            callback.as_ref().and_then(|callback| {
+                let callback = callback.lock().unwrap();
+                callback(true);
+                None as Option<()>
+            });
+        })))));
+    }
+
+    fn open(&self, callback: Option<Callback>) {
+        unimplemented!("Open Function");
+    }
+
     fn save(&self, callback: Option<Callback>) {
         if self.file.read().unwrap().is_some() {
             self.save_previous_file(callback);
@@ -35,7 +55,11 @@ impl SaveClient for AppState {
         let window = self.main_window.as_ref().clone();
 
         if !dirty {
-            gtk::main_quit();
+            callback.as_ref().and_then(|callback| {
+                let callback = callback.lock().unwrap();
+                callback(false);
+                None as Option<()>
+            });
         } else {
             let dialog = gtk::MessageDialog::new::<gtk::Window>(
                 Some(&window.upcast()),
@@ -45,9 +69,11 @@ impl SaveClient for AppState {
                 "You have unsaved changes. Do you want to save?",
             );
 
+            dialog.set_title("Unsaved Changes");
+
             dialog.get_message_area().and_then(|message_area| {
                 message_area.set_valign(gtk::Align::Center);
-                Some(())
+                None as Option<()>
             });
 
             dialog.connect_response({
@@ -58,18 +84,23 @@ impl SaveClient for AppState {
                         gtk::ResponseType::Yes => {
                             dialog.hide();
                             app.save(callback.clone());
-                        }
+                        },
                         gtk::ResponseType::No => {
-                            gtk::main_quit();
-                        }
+                            dialog.hide();
+                            callback.as_ref().and_then(|callback| {
+                                let callback = callback.lock().unwrap();
+                                callback(false);
+                                None as Option<()>
+                            });
+                        },
                         _ => {
-                            // Cancelled
+                            dialog.hide();
                         }
                     }
                 }
             });
 
-            dialog.show();
+            dialog.run();
         }
     }
 
@@ -111,7 +142,7 @@ impl SaveClient for AppState {
                                 let callback = callback.lock().unwrap();
                                 callback(true);
                                 app.dirty.store(false, Relaxed);
-                                Some(())
+                                None as Option<()>
                             });
                             *app.file.write().unwrap() = Some(path.clone());
                         } else {
@@ -125,14 +156,14 @@ impl SaveClient for AppState {
                             dialog.set_title("Error");
                             dialog.get_message_area().and_then(|message_area| {
                                 message_area.set_valign(gtk::Align::Center);
-                                Some(())
+                                None as Option<()>
                             });
                             dialog.connect_response(|dialog, response| {
                                 if response == gtk::ResponseType::Ok {
                                     dialog.hide();
                                 }
                             });
-                            dialog.show_all();
+                            dialog.run();
                         }
                     }
                 }
@@ -141,13 +172,13 @@ impl SaveClient for AppState {
                     callback.as_ref().and_then(|callback| {
                         let callback = callback.lock().unwrap();
                         callback(false);
-                        Some(())
+                        None as Option<()>
                     });
                 }
             }
         });
 
-        dialog.show_all();
+        dialog.run();
     }
 
     fn save_previous_file(&self, callback: Option<Callback>) {
@@ -161,7 +192,7 @@ impl SaveClient for AppState {
                 let callback = callback.lock().unwrap();
                 callback(true);
                 app.dirty.store(false, Relaxed);
-                Some(())
+                None as Option<()>
             });
         } else {
             let dialog = gtk::MessageDialog::new(
@@ -174,14 +205,14 @@ impl SaveClient for AppState {
             dialog.set_title("Error");
             dialog.get_message_area().and_then(|message_area| {
                 message_area.set_valign(gtk::Align::Center);
-                Some(())
+                None as Option<()>
             });
             dialog.connect_response(|dialog, response| {
                 if response == gtk::ResponseType::Ok {
                     dialog.hide();
                 }
             });
-            dialog.show();
+            dialog.run();
         }
     }
 }

@@ -1,11 +1,11 @@
 use crate::state::AppState;
 use gtk::prelude::*;
 
-pub trait DeleteSelectionClient {
+pub trait DeleteSelectionUI {
     fn handle_delete_selection_button(&self, button: &gtk::Button, treeview: &gtk::TreeView);
 }
 
-impl DeleteSelectionClient for AppState {
+impl DeleteSelectionUI for AppState {
     fn handle_delete_selection_button(&self, button: &gtk::Button, treeview: &gtk::TreeView) {
         let store = self.store.clone();
         let treeview = treeview.clone();

@@ -2,11 +2,14 @@ use super::*;
 use crate::state::AppState;
 use gtk::prelude::*;
 
-pub trait TreeViewToDoUI {
+pub const TITLE_COLUMN_ID: i32 = 0;
+pub const DESCRIPTION_COLUMN_ID: i32 = 1;
+
+pub trait ToDoTreeViewUI {
     fn populate_treeview_todo(&self, treeview: &gtk::TreeView);
 }
 
-impl TreeViewToDoUI for AppState {
+impl ToDoTreeViewUI for AppState {
     fn populate_treeview_todo(&self, treeview: &gtk::TreeView) {
         let title_cell = gtk::CellRendererText::new();
         let description_cell = gtk::CellRendererText::new();

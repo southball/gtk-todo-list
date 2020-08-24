@@ -1,10 +1,12 @@
-pub mod add_todo;
+pub mod add_todo_dialog;
 pub mod main_window;
-pub mod treeview_todo;
+pub mod todo_treeview;
+pub mod delete_selection;
+pub mod main_menu;
 
-pub const TITLE_COLUMN_ID: i32 = 0;
-pub const DESCRIPTION_COLUMN_ID: i32 = 1;
-
-pub use add_todo::AddToDoUI;
+pub use add_todo_dialog::AddToDoDialogUI;
 pub use main_window::MainWindowUI;
-pub use treeview_todo::TreeViewToDoUI;
+pub use todo_treeview::ToDoTreeViewUI;
+pub use delete_selection::DeleteSelectionUI;
+pub use main_menu::MainMenuUI;
+
