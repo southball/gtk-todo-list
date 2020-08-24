@@ -327,17 +327,6 @@ dependencies = [
 
 [[package]]
 name = "gtk"
-version = "0.1.0"
-dependencies = [
- "gio",
- "glib",
- "gtk 0.9.1",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "gtk"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04e8dfefe08ae2c0e3a8a221a5440a891a5e3402ba7c01078182f700c38ef345"
@@ -380,6 +369,17 @@ dependencies = [
  "libc",
  "pango-sys",
  "system-deps",
+]
+
+[[package]]
+name = "gtk-todo-list"
+version = "0.1.0"
+dependencies = [
+ "gio",
+ "glib",
+ "gtk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
