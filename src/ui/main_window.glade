@@ -101,10 +101,11 @@
             <property name="hexpand">True</property>
             <child>
               <object class="GtkButton" id="button-add-todo">
-                <property name="label" translatable="yes">Add To-Do</property>
+                <property name="label" translatable="yes">Add To-Do (N)</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
+                <accelerator key="n" signal="clicked"/>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -117,11 +118,12 @@
             </child>
             <child>
               <object class="GtkButton" id="button-delete-selection">
-                <property name="label" translatable="yes">Delete Selected</property>
+                <property name="label" translatable="yes">Delete Selected (Del)</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
                 <property name="image_position">right</property>
+                <accelerator key="Delete" signal="clicked"/>
               </object>
               <packing>
                 <property name="expand">True</property>
