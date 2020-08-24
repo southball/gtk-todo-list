@@ -1,4 +1,3 @@
-use super::*;
 use crate::state::AppState;
 use gtk::prelude::*;
 

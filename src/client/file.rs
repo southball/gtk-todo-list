@@ -1,12 +1,14 @@
 use super::ExtractorClient;
 use crate::state::AppState;
+use crate::ui::{MainWindowUI, ErrorDialogUI};
+use crate::model::ToDo;
 
 use gio::prelude::*;
 use gtk::prelude::*;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, Mutex};
 
-type Callback = Arc<Mutex<Box<dyn Fn(bool) -> ()>>>;
+type Callback = Arc<Mutex<Box<dyn Fn() -> ()>>>;
 
 pub trait FileClient {
     fn new(&self, callback: Option<Callback>);
@@ -22,20 +24,72 @@ pub trait FileClient {
 impl FileClient for AppState {
     fn new(&self, callback: Option<Callback>) {
         let app_state = self.clone();
-        self.save_changed(Some(Arc::new(Mutex::new(Box::new(move |_saved| {
+        self.save_changed(Some(Arc::new(Mutex::new(Box::new(move || {
             *app_state.file.write().unwrap() = None;
             app_state.dirty.store(false, Relaxed);
             app_state.store.clear();
+            app_state.update_subtitle();
             callback.as_ref().and_then(|callback| {
                 let callback = callback.lock().unwrap();
-                callback(true);
+                callback();
                 None as Option<()>
             });
         })))));
     }
 
     fn open(&self, callback: Option<Callback>) {
-        unimplemented!("Open Function");
+        let app_state = self.clone();
+        let main_window = self.main_window.as_ref().clone();
+        self.save_changed(Some(Arc::new(Mutex::new(Box::new(move || {
+            let app_state = app_state.clone();
+
+            let dialog = gtk::FileChooserDialog::with_buttons::<gtk::Window>(
+                Some("Open File"),
+                Some(&main_window),
+                gtk::FileChooserAction::Open,
+                &[("Cancel", gtk::ResponseType::Cancel), ("Open", gtk::ResponseType::Ok)]
+            );
+
+            dialog.connect_response(move |dialog, response| {
+                match response {
+                    gtk::ResponseType::Ok => {
+                        dialog.hide();
+
+                        let path = {
+                            let file = dialog.get_file().unwrap();
+                            file.get_path().unwrap()
+                        };
+
+                        let todos: Result<Vec<ToDo>, Box<dyn std::error::Error>> = std::fs::read_to_string(&path)
+                            .map_err(|err| err.into())
+                            .and_then(|content| serde_json::from_str(&content).map_err(|err| err.into()));
+
+                        match todos {
+                            Ok(todos) => {
+                                *app_state.file.write().unwrap() = Some(path.clone());
+                                app_state.dirty.store(false, Relaxed);
+                                app_state.set_todos(&todos);
+                                app_state.update_subtitle();
+                            },
+                            Err(err) => {
+                                app_state.show_error_dialog(
+                                    Some("Error opening file"),
+                                    Some(&format!("Error opening file: {:?}", err)),
+                                );
+                            }
+                        }
+                    },
+                    gtk::ResponseType::Cancel => {
+                        dialog.hide();
+                    },
+                    _ => {
+                        // Do nothing
+                    }
+                }
+            });
+
+            dialog.run();
+        })))));
     }
 
     fn save(&self, callback: Option<Callback>) {
@@ -57,7 +111,7 @@ impl FileClient for AppState {
         if !dirty {
             callback.as_ref().and_then(|callback| {
                 let callback = callback.lock().unwrap();
-                callback(false);
+                callback();
                 None as Option<()>
             });
         } else {
@@ -89,7 +143,7 @@ impl FileClient for AppState {
                             dialog.hide();
                             callback.as_ref().and_then(|callback| {
                                 let callback = callback.lock().unwrap();
-                                callback(false);
+                                callback();
                                 None as Option<()>
                             });
                         },
@@ -105,9 +159,9 @@ impl FileClient for AppState {
     }
 
     fn save_and_quit(&self) {
-        let quit_callback = Arc::new(Mutex::new(Box::new(|_success| {
+        let quit_callback = Arc::new(Mutex::new(Box::new(|| {
             gtk::main_quit();
-        }) as Box<dyn Fn(bool) -> ()>));
+        }) as Box<dyn Fn() -> ()>));
 
         self.save_changed(Some(quit_callback));
     }
@@ -138,32 +192,20 @@ impl FileClient for AppState {
                     if let Some(path) = file.get_path() {
                         if let Ok(_) = std::fs::write(&path, &content) {
                             dialog.hide();
+
+                            *app.file.write().unwrap() = Some(path.clone());
+                            app.dirty.store(false, Relaxed);
+                            app.update_subtitle();
                             callback.as_ref().and_then(|callback| {
                                 let callback = callback.lock().unwrap();
-                                callback(true);
-                                app.dirty.store(false, Relaxed);
+                                callback();
                                 None as Option<()>
                             });
-                            *app.file.write().unwrap() = Some(path.clone());
                         } else {
-                            let dialog = gtk::MessageDialog::new::<gtk::Window>(
-                                Some(&parent),
-                                gtk::DialogFlags::MODAL | gtk::DialogFlags::USE_HEADER_BAR,
-                                gtk::MessageType::Error,
-                                gtk::ButtonsType::Ok,
-                                "Error saving file.",
+                            app.show_error_dialog(
+                                None,
+                                Some("Error saving file."),
                             );
-                            dialog.set_title("Error");
-                            dialog.get_message_area().and_then(|message_area| {
-                                message_area.set_valign(gtk::Align::Center);
-                                None as Option<()>
-                            });
-                            dialog.connect_response(|dialog, response| {
-                                if response == gtk::ResponseType::Ok {
-                                    dialog.hide();
-                                }
-                            });
-                            dialog.run();
                         }
                     }
                 }
@@ -171,7 +213,7 @@ impl FileClient for AppState {
                     dialog.hide();
                     callback.as_ref().and_then(|callback| {
                         let callback = callback.lock().unwrap();
-                        callback(false);
+                        callback();
                         None as Option<()>
                     });
                 }
@@ -188,10 +230,11 @@ impl FileClient for AppState {
         if let Ok(_) = std::fs::write(&file, content) {
             let app = self.clone();
 
-            callback.and_then(|callback| {
+            app.dirty.store(false, Relaxed);
+            app.update_subtitle();
+            callback.as_ref().and_then(|callback| {
                 let callback = callback.lock().unwrap();
-                callback(true);
-                app.dirty.store(false, Relaxed);
+                callback();
                 None as Option<()>
             });
         } else {
